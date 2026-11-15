@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jargon Translator</title>
+  <style>
+    :root {
+      --bg: #f6f5f1; --card: #ffffff; --text: #1d1d1f; --muted: #6b6b70;
+      --border: #dedcd5; --accent: #2f5bea; --accent-text: #ffffff; --error: #c0392b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161618; --card: #202023; --text: #ececee; --muted: #9a9aa1;
+        --border: #34343a; --accent: #6b8cff; --accent-text: #0e0e10; --error: #ff7b6b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 48px; }
+    h1 { margin: 0 0 4px; font-size: 28px; }
+    .sub { margin: 0 0 24px; color: var(--muted); }
+    .toggle {
+      display: inline-flex; border: 1px solid var(--border); border-radius: 999px;
+      padding: 4px; background: var(--card); margin-bottom: 16px;
+    }
+    .toggle button {
+      border: 0; background: transparent; color: var(--text); padding: 8px 16px;
+      border-radius: 999px; font: inherit; cursor: pointer;
+    }
+    .toggle button.active { background: var(--accent); color: var(--accent-text); }
+    .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .panes { grid-template-columns: 1fr; } }
+    .pane {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px; display: flex; flex-direction: column;
+    }
+    .pane label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    textarea, .output {
+      width: 100%; min-height: 320px; border: 0; resize: vertical; background: transparent;
+      color: var(--text); font: inherit; outline: none; white-space: pre-wrap;
+    }
+    .output.placeholder { color: var(--muted); }
+    .actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    .primary {
+      background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
+      padding: 10px 20px; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .primary:disabled { opacity: .6; cursor: wait; }
+    .secondary {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 16px; font: inherit; cursor: pointer;
+    }
+    .status { color: var(--muted); font-size: 14px; }
+    .status.error { color: var(--error); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Jargon Translator</h1>
+  <p class="sub">Paste an email. Get the corporate version, or find out what it actually says.</p>
+
+  <div class="toggle" role="group" aria-label="Direction">
+    <button type="button" data-dir="to_plain" class="active">Jargon → Plain English</button>
+    <button type="button" data-dir="to_jargon">Plain English → Jargon</button>
+  </div>
+
+  <div class="panes">
+    <div class="pane">
+      <label for="input" id="input-label">Corporate jargon</label>
+      <textarea id="input" placeholder="Per my last email, let's circle back EOD to align on next steps..."></textarea>
+    </div>
+    <div class="pane">
+      <label id="output-label">Plain English</label>
+      <div id="output" class="output placeholder" aria-live="polite">Your translation will appear here.</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="go" class="primary">Translate</button>
+    <button id="swap" class="secondary" title="Use the output as new input and flip direction">Swap ⇄</button>
+    <button id="copy" class="secondary">Copy</button>
+    <span id="status" class="status"></span>
+  </div>
+</main>
+
+<script>
+  const labels = { to_plain: ["Corporate jargon", "Plain English"], to_jargon: ["Plain English", "Corporate jargon"] };
+  let direction = "to_plain";
+  const $ = (id) => document.getElementById(id);
+  const input = $("input"), output = $("output"), status = $("status"), go = $("go");
+
+  function setDirection(dir) {
+    direction = dir;
+    document.querySelectorAll(".toggle button").forEach(b => b.classList.toggle("active", b.dataset.dir === dir));
+    $("input-label").textContent = labels[dir][0];
+    $("output-label").textContent = labels[dir][1];
+  }
+  document.querySelectorAll(".toggle button").forEach(b => b.addEventListener("click", () => setDirection(b.dataset.dir)));
+
+  async function translate() {
+    const text = input.value.trim();
+    if (!text) { status.textContent = "Paste some text first."; status.className = "status error"; return; }
+    go.disabled = true; status.className = "status"; status.textContent = "Translating…";
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, direction }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      output.textContent = data.result; output.classList.remove("placeholder");
+      status.textContent = "";
+    } catch (e) {
+      status.textContent = e.message; status.className = "status error";
+    } finally { go.disabled = false; }
+  }
+
+  go.addEventListener("click", translate);
+  input.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") translate(); });
+  $("swap").addEventListener("click", () => {
+    if (output.classList.contains("placeholder")) return;
+    input.value = output.textContent;
+    setDirection(direction === "to_plain" ? "to_jargon" : "to_plain");
+  });
+  $("copy").addEventListener("click", async () => {
+    if (output.classList.contains("placeholder")) return;
+    try { await navigator.clipboard.writeText(output.textContent); status.className = "status"; status.textContent = "Copied!"; } catch {}
+  });
+</script>
+</body>
+</html>
