@@ -56,12 +56,47 @@
     }
     .status { color: var(--muted); font-size: 14px; }
     .status.error { color: var(--error); }
+
+    .gmail {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 16px;
+    }
+    .gmail-bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .gmail-bar .who { font-size: 14px; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+    .gmail-bar .who strong { color: var(--text); }
+    .gmail-buttons { display: flex; gap: 8px; }
+    .inbox { list-style: none; margin: 12px 0 0; padding: 0; max-height: 280px; overflow-y: auto;
+             border-top: 1px solid var(--border); }
+    .inbox li { border-bottom: 1px solid var(--border); }
+    .inbox button {
+      display: block; width: 100%; text-align: left; background: transparent; border: 0;
+      color: var(--text); font: inherit; padding: 10px 4px; cursor: pointer;
+    }
+    .inbox button:hover, .inbox button:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .inbox .row1 { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+    .inbox .from { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inbox .date { color: var(--muted); flex-shrink: 0; }
+    .inbox .subject { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inbox .snippet { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .inbox .empty { padding: 12px 4px; color: var(--muted); font-size: 14px; }
   </style>
 </head>
 <body>
 <main>
   <h1>Jargon Translator</h1>
   <p class="sub">Paste an email. Get the corporate version, or find out what it actually says.</p>
+
+  <section class="gmail" id="gmail" hidden>
+    <div class="gmail-bar">
+      <span class="who" id="gmail-who">Load an email straight from Gmail (read-only).</span>
+      <div class="gmail-buttons">
+        <a class="primary" id="gmail-signin" href="/login" style="text-decoration:none">Sign in with Google</a>
+        <button class="secondary" id="gmail-refresh" hidden>Refresh inbox</button>
+        <button class="secondary" id="gmail-signout" hidden>Sign out</button>
+      </div>
+    </div>
+    <ul class="inbox" id="inbox" hidden aria-label="Recent emails"></ul>
+  </section>
 
   <div class="toggle" role="group" aria-label="Direction">
     <button type="button" data-dir="to_plain" class="active">Jargon → Plain English</button>
@@ -130,6 +165,86 @@
     if (output.classList.contains("placeholder")) return;
     try { await navigator.clipboard.writeText(output.textContent); status.className = "status"; status.textContent = "Copied!"; } catch {}
   });
+
+  // ---------- Gmail ----------
+  const gmail = $("gmail"), who = $("gmail-who"), inbox = $("inbox");
+  const signin = $("gmail-signin"), refresh = $("gmail-refresh"), signout = $("gmail-signout");
+
+  function showError(msg) { status.textContent = msg; status.className = "status error"; }
+
+  function shortDate(raw) {
+    const d = new Date(raw);
+    if (isNaN(d)) return "";
+    const today = new Date().toDateString() === d.toDateString();
+    return today ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                 : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  const senderName = (from) => (from.match(/^\s*"?([^"<]+?)"?\s*</) || [, from])[1].trim();
+
+  async function loadInbox() {
+    inbox.hidden = false;
+    inbox.innerHTML = '<li class="empty">Loading inbox…</li>';
+    try {
+      const res = await fetch("/api/emails");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      inbox.innerHTML = "";
+      if (!data.emails.length) { inbox.innerHTML = '<li class="empty">Your inbox is empty.</li>'; return; }
+      for (const m of data.emails) {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.innerHTML = '<div class="row1"><span class="from"></span><span class="date"></span></div>' +
+                      '<div class="subject"></div><div class="snippet"></div>';
+        b.querySelector(".from").textContent = senderName(m.from);
+        b.querySelector(".date").textContent = shortDate(m.date);
+        b.querySelector(".subject").textContent = m.subject;
+        b.querySelector(".snippet").textContent = m.snippet;
+        b.addEventListener("click", () => openEmail(m.id));
+        li.appendChild(b); inbox.appendChild(li);
+      }
+    } catch (e) {
+      inbox.innerHTML = "";
+      const li = document.createElement("li"); li.className = "empty"; li.textContent = e.message;
+      inbox.appendChild(li);
+    }
+  }
+
+  async function openEmail(id) {
+    status.className = "status"; status.textContent = "Loading email…";
+    try {
+      const res = await fetch("/api/emails/" + encodeURIComponent(id));
+      const m = await res.json();
+      if (!res.ok) throw new Error(m.error);
+      input.value = m.body;
+      setDirection("to_plain");
+      output.textContent = "Your translation will appear here."; output.classList.add("placeholder");
+      status.textContent = `Loaded “${m.subject}”` + (m.truncated ? " (trimmed to 10,000 characters)" : "") + ". Click Translate.";
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (e) { showError(e.message); }
+  }
+
+  async function initGmail() {
+    const params = new URLSearchParams(location.search);
+    if (params.get("gmail_error")) {
+      showError(params.get("gmail_error") === "access_denied" ? "Google sign-in was cancelled." : "Google sign-in failed. Try again.");
+      history.replaceState(null, "", "/");
+    }
+    try {
+      const me = await (await fetch("/api/me")).json();
+      if (!me.configured) return;  // Google keys not set: keep the Gmail panel hidden
+      gmail.hidden = false;
+      if (me.signed_in) {
+        who.innerHTML = "Signed in as <strong></strong>";
+        who.querySelector("strong").textContent = me.email;
+        signin.hidden = true; refresh.hidden = false; signout.hidden = false;
+        loadInbox();
+      }
+    } catch {}
+  }
+
+  refresh.addEventListener("click", loadInbox);
+  signout.addEventListener("click", async () => { await fetch("/logout", { method: "POST" }); location.reload(); });
+  initGmail();
 </script>
 </body>
 </html>

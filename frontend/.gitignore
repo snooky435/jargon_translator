@@ -1,0 +1,13 @@
+# Installed packages (huge, and anyone can re-create them with "npm install")
+node_modules/
+
+# Built website output (re-created with "npm run build")
+dist/
+
+# Local settings / secrets: never commit these
+.env
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*

@@ -1,0 +1,39 @@
+/* This one line loads all of Tailwind's utility classes */
+@import "tailwindcss";
+
+/* Our own additions to Tailwind:
+   - "font-display": a fancy serif font for formal headings
+     (Playfair Display is loaded in index.html; Georgia is the backup)
+   - "animate-ticker": slides the stock ticker to the left forever */
+@theme {
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+
+  --animate-ticker: ticker 40s linear infinite;
+  @keyframes ticker {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+/* Dark mode by default: dark background, light text */
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #0b0d12;
+  color: #e5e7eb;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Respect people who turn off animations in their computer settings */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker {
+    animation: none;
+  }
+}
