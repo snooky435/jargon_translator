@@ -6,7 +6,7 @@ Paste an email and translate it **from corporate jargon to plain English**, or *
 
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...   # get one at https://console.anthropic.com
+cp .env.example .env    # then paste your API key into .env
 python app.py
 ```
 
@@ -24,7 +24,7 @@ The system prompt is cached, so repeated requests are cheaper and faster.
 ## Customizing
 
 - **Add phrases:** edit `phrases.json` and restart the app.
-- **Change the model:** `export JARGON_MODEL=claude-haiku-5-5` for a cheaper, faster option (the default is `claude-opus-5-5`).
+- **Change the model:** set `JARGON_MODEL=claude-haiku-5-5` in `.env` for a cheaper, faster option (the default is `claude-opus-5-5`).
 - **Tune the tone:** edit `SYSTEM_PROMPT` in `translator.py`.
 
 ## Files

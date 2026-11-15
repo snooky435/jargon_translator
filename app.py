@@ -1,6 +1,10 @@
 import os
 
 import anthropic
+from dotenv import load_dotenv
+
+load_dotenv()  # read ANTHROPIC_API_KEY etc. from .env before the client is created
+
 from flask import Flask, jsonify, render_template, request
 
 from translator import translate
@@ -26,14 +30,14 @@ def api_translate():
         return jsonify(error=f"Text is too long (max {MAX_CHARS:,} characters)."), 400
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        return jsonify(error="ANTHROPIC_API_KEY is not set on the server."), 500
+        return jsonify(error="ANTHROPIC_API_KEY is not set. Paste your key into .env and restart the server."), 500
 
     try:
         return jsonify(result=translate(text, direction))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except anthropic.AuthenticationError:
-        return jsonify(error="API key missing or invalid. Set ANTHROPIC_API_KEY."), 500
+        return jsonify(error="API key is invalid. Check ANTHROPIC_API_KEY in .env."), 500
     except anthropic.RateLimitError:
         return jsonify(error="Rate limited. Try again in a moment."), 429
     except anthropic.APIStatusError as e:
